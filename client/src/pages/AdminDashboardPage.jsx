@@ -3,7 +3,7 @@ import api from "../api.js";
 import { CUR } from "../utils.js";
 import ReservationScanner from "./ReservationScanner.jsx";
 
-const TABS = ["Overview", "Facilities", "Slots", "Reservations", "Users", "Analytics"];
+const TABS = ["Overview", "Owner review", "Facilities", "Slots", "Reservations", "Users", "Analytics"];
 const SLOT_STATES = ["AVAILABLE", "OCCUPIED", "RESERVED", "MAINTENANCE"];
 export default function AdminDashboardPage() {
   const [tab, setTab] = useState("Overview");
@@ -12,6 +12,7 @@ export default function AdminDashboardPage() {
   const [slots, setSlots] = useState([]);
   const [reservations, setReservations] = useState([]);
   const [users, setUsers] = useState([]);
+  const [organizations, setOrganizations] = useState([]);
   const [analytics, setAnalytics] = useState(null);
   const [error, setError] = useState("");
   const [slotLot, setSlotLot] = useState("");
@@ -25,6 +26,7 @@ export default function AdminDashboardPage() {
     setError("");
     try {
       if (tab === "Overview") setMetrics((await api.get("/admin/overview")).data.metrics);
+      if (tab === "Owner review") setOrganizations((await api.get("/admin/organizations")).data.organizations || []);
       if (tab === "Facilities") setLots((await api.get("/admin/lots")).data.lots || []);
       if (tab === "Slots") {
         const [lotResult, slotResult] = await Promise.all([api.get("/admin/lots"), api.get("/admin/slots")]);
@@ -73,6 +75,14 @@ export default function AdminDashboardPage() {
     try { const { data } = await api.patch(`/admin/slots/${slot._id}`, { status }); setSlots((items) => items.map((item) => item._id === slot._id ? data.slot : item)); }
     catch (requestError) { setError(requestError?.response?.data?.message || "Could not update slot"); }
   }
+  async function reviewOrganization(organization, status) {
+    setBusy(true); setError("");
+    try {
+      const { data } = await api.patch(`/admin/organizations/${organization._id}/review`, { status });
+      setOrganizations((items) => items.map((item) => item._id === organization._id ? data.organization : item));
+    } catch (requestError) { setError(requestError?.response?.data?.message || "Could not update owner application"); }
+    finally { setBusy(false); }
+  }
 
   return <div className="shell" style={{ background: "var(--bg)", overflowY: "auto" }}>
     <div className="status-bar dark"><span>ParkFlow Admin</span><span>Chennai</span></div>
@@ -86,7 +96,18 @@ export default function AdminDashboardPage() {
       {tab === "Overview" && <>
         {metrics ? <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>{[["Facilities",metrics.totalFacilities],["Spaces",metrics.totalSpaces],["Occupied",metrics.occupiedSpaces],["Available",metrics.availableSpaces],["Active reservations",metrics.activeReservations],["Today",metrics.todayReservations],["Collected on site",`${CUR}${metrics.revenue}`],["Occupancy",`${metrics.averageOccupancy}%`]].map(([label,value]) => <div className="card" key={label} style={{ padding: 16 }}><div style={{ color: "var(--text-muted)", fontSize: 12 }}>{label}</div><div style={{ fontWeight: 800, fontSize: 22, marginTop: 5 }}>{value}</div></div>)}</div> : <p>Loading dashboard…</p>}
       </>}
+      {tab === "Owner review" && <div style={{ display: "grid", gap: 10 }}>
+        {!organizations.length && <div className="card" style={{ padding: 16, color: "var(--text-muted)" }}>No owner applications yet.</div>}
+        {organizations.map((organization) => <section className="card" key={organization._id} style={{ padding: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><b>{organization.name}</b><span className="chip">{organization.status}</span></div>
+          <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 6 }}>{organization.primaryOwner?.name} · {organization.primaryOwner?.email}</div>
+          <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>{organization.phone}{organization.address ? ` · ${organization.address}` : ""}</div>
+          {organization.reviewNote && <p style={{ fontSize: 12, margin: "8px 0 0" }}>{organization.reviewNote}</p>}
+          {organization.status !== "approved" && <div style={{ display: "flex", gap: 8, marginTop: 12 }}><button className="btn btn-primary" disabled={busy} onClick={() => reviewOrganization(organization, "approved")}>Approve owner</button><button className="btn btn-outline" disabled={busy} onClick={() => reviewOrganization(organization, "rejected")}>Reject</button></div>}
+        </section>)}
+      </div>}
       {tab === "Facilities" && <>
+        <div className="card" style={{ padding: 14, marginBottom: 12, color: "var(--text-muted)", fontSize: 13, lineHeight: 1.5 }}>Owner applications and facility listings are reviewed separately. Approving an owner does not approve their parking lot. Review operator listings below and select <b>Approve listing</b> to publish one.</div>
         <button className="btn btn-primary" style={{ marginBottom: 12 }} onClick={() => setShowFacilityForm((shown) => !shown)}>{showFacilityForm ? "Close form" : "＋ Add facility"}</button>
         {showFacilityForm && <form className="card" onSubmit={addFacility} style={{ padding: 16, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10, marginBottom: 12 }}>
           <input className="input" placeholder="Facility name" aria-label="Facility name" value={facilityDraft.name} onChange={(event) => setFacilityDraft({ ...facilityDraft, name: event.target.value })} required maxLength={120} style={{ gridColumn: "1 / -1" }} />
@@ -102,7 +123,7 @@ export default function AdminDashboardPage() {
           <p style={{ gridColumn: "1 / -1", margin: 0, color: "var(--text-muted)", fontSize: 12 }}>Uncheck only after you verify the facility details. Occupancy begins as unreported until an operator update arrives.</p>
           <button className="btn btn-primary" type="submit" disabled={busy} style={{ gridColumn: "1 / -1" }}>{busy ? "Saving…" : "Save facility"}</button>
         </form>}
-        <div style={{ display: "grid", gap: 10 }}>{lots.map((lot) => <section className="card" key={lot._id} style={{ padding: 16 }}><b>{lot.name}</b><div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>{lot.neighborhood} · {lot.occupied}/{lot.totalSpots} occupied · {CUR}{lot.rates?.hourly}/hr</div><div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>{lot.isDemoData ? "Sample listing" : "Operator listing"} · {lot.occupancySource || "occupancy unreported"}{lot.occupancyUpdatedAt ? ` · ${new Date(lot.occupancyUpdatedAt).toLocaleString()}` : ""}</div><div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}><button className="btn btn-outline" disabled={busy || lot.occupied <= 0} onClick={() => updateLot(lot,{occupied:lot.occupied-1})}>− Occupied</button><button className="btn btn-outline" disabled={busy || lot.occupied >= lot.totalSpots} onClick={() => updateLot(lot,{occupied:lot.occupied+1})}>+ Occupied</button><button className="btn btn-ghost" onClick={() => { const name=window.prompt("Facility name",lot.name); if(name?.trim()) updateLot(lot,{name:name.trim()}); }}>Edit name</button></div></section>)}</div>
+        <div style={{ display: "grid", gap: 10 }}>{lots.map((lot) => <section className="card" key={lot._id} style={{ padding: 16 }}><b>{lot.name}</b><div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>{lot.neighborhood} · {lot.occupied}/{lot.totalSpots} occupied · {CUR}{lot.rates?.hourly}/hr</div><div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>{lot.isDemoData ? "Sample listing" : "Operator listing"} · review: {lot.approvalStatus || "approved"} · {lot.occupancySource || "occupancy unreported"}{lot.occupancyUpdatedAt ? ` · ${new Date(lot.occupancyUpdatedAt).toLocaleString()}` : ""}</div><div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>{lot.ownerOrganization && lot.approvalStatus !== "approved" && <><button className="btn btn-primary" disabled={busy} onClick={() => updateLot(lot,{approvalStatus:"approved",approvalNote:""})}>Approve listing</button><button className="btn btn-outline" disabled={busy} onClick={() => updateLot(lot,{approvalStatus:"rejected",approvalNote:"Listing needs more information"})}>Reject listing</button></>}<button className="btn btn-outline" disabled={busy || lot.occupied <= 0} onClick={() => updateLot(lot,{occupied:lot.occupied-1})}>− Occupied</button><button className="btn btn-outline" disabled={busy || lot.occupied >= lot.totalSpots} onClick={() => updateLot(lot,{occupied:lot.occupied+1})}>+ Occupied</button><button className="btn btn-ghost" onClick={() => { const name=window.prompt("Facility name",lot.name); if(name?.trim()) updateLot(lot,{name:name.trim()}); }}>Edit name</button></div></section>)}</div>
       </>}      {tab === "Slots" && <>
         <form className="card" onSubmit={addSlot} style={{ padding: 14, display: "flex", gap: 8, flexWrap: "wrap" }}><select className="input" value={slotLot || lots[0]?._id || ""} onChange={(e)=>setSlotLot(e.target.value)} aria-label="Facility">{lots.map((lot)=><option key={lot._id} value={lot._id}>{lot.name}</option>)}</select><input className="input" placeholder="Slot number" value={slotNumber} onChange={(e)=>setSlotNumber(e.target.value)} required /><button className="btn btn-primary" disabled={busy || !lots.length}>Add slot</button></form>
         <div style={{ display: "grid", gap: 8, marginTop: 12 }}>{slots.map((slot)=><div className="card" key={slot._id} style={{ padding: 14, display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div><b>{slot.slotNumber}</b><div style={{ color: "var(--text-muted)", fontSize: 12 }}>{slot.lotId?.name} · {slot.floor} {slot.section}</div></div><select value={slot.status} onChange={(e)=>updateSlot(slot,e.target.value)} aria-label={`Status for ${slot.slotNumber}`}>{SLOT_STATES.map((state)=><option key={state}>{state}</option>)}</select></div>)}</div>
@@ -111,7 +132,7 @@ export default function AdminDashboardPage() {
       {tab === "Users" && <div style={{ display: "grid", gap: 8 }}>{users.map((item)=><div className="card" key={item._id} style={{ padding: 14 }}><b>{item.name || "Driver"}</b><div style={{ color: "var(--text-muted)", fontSize: 13 }}>{item.email} · {item.role}</div></div>)}</div>}
       {tab === "Analytics" && analytics && <><p style={{ fontSize: 12, color: "var(--text-muted)" }}>Historical demo aggregates; this seed does not contain live sensor time series.</p><h3>Parking demand by area</h3>{analytics.demandByArea?.map((area)=><div key={area._id || "unknown"} className="card" style={{ marginTop: 8, padding: 12 }}><div style={{ display: "flex", justifyContent: "space-between" }}><b>{area._id || "Area not set"}</b><span>{area.occupied}/{area.spaces}</span></div><div style={{ height: 8, background: "var(--border)", borderRadius: 8, marginTop: 8 }}><div style={{ width: `${area.spaces ? Math.min(100, area.occupied/area.spaces*100) : 0}%`, height: "100%", background: "var(--mint)", borderRadius: 8 }} /></div></div>)}</>}
       {tab === "Analytics" && !analytics && <p>Loading analytics…</p>}
-      {tab !== "Overview" && tab !== "Facilities" && tab !== "Slots" && tab !== "Reservations" && tab !== "Users" && tab !== "Analytics" && <p>No dashboard section selected.</p>}
+      {tab !== "Overview" && tab !== "Owner review" && tab !== "Facilities" && tab !== "Slots" && tab !== "Reservations" && tab !== "Users" && tab !== "Analytics" && <p>No dashboard section selected.</p>}
     </main>
   </div>;
 }

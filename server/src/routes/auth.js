@@ -2,6 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { User } from "../models/User.js";
+import { Organization } from "../models/Organization.js";
 import { signToken } from "../middleware/auth.js";
 import { getEmailConfiguration, sendPasswordResetEmail } from "../services/email.js";
 
@@ -20,12 +21,25 @@ authRouter.use((req, res, next) => {
 
 authRouter.post("/register", async (req, res) => {
   try {
-    const { name, email, password } = req.body || {};
+    const { name, email, password, accountType = "driver", organizationName, phone, businessAddress } = req.body || {};
     const normalizedEmail = String(email || "").trim().toLowerCase();
+    if (!["driver", "owner"].includes(accountType)) return res.status(400).json({ success: false, message: "Choose a valid account type" });
+    const normalizedPhone = String(phone || "").trim();
+    if (accountType === "owner" && (String(organizationName || "").trim().length < 2 || String(organizationName).trim().length > 120 || !/^[+\d() -]{7,24}$/.test(normalizedPhone))) return res.status(400).json({ success: false, message: "Facility owners need a business name and valid contact phone" });
     if (!/^\S+@\S+\.\S+$/.test(normalizedEmail) || typeof password !== "string") return res.status(400).json({ success: false, message: "A valid email and password are required" });
     if (password.length < 8 || password.length > 128) return res.status(400).json({ success: false, message: "Password must be 8 to 128 characters" });
     if (await User.findOne({ email: normalizedEmail })) return res.status(409).json({ success: false, message: "An account already exists for this email" });
-    const user = await User.create({ name: typeof name === "string" ? name.trim().slice(0, 80) : "", email: normalizedEmail, passwordHash: await bcrypt.hash(password, 10) });
+    const user = await User.create({ name: typeof name === "string" ? name.trim().slice(0, 80) : "", email: normalizedEmail, passwordHash: await bcrypt.hash(password, 10), role: accountType });
+    if (accountType === "owner") {
+      try {
+        const organization = await Organization.create({ name: String(organizationName).trim(), primaryOwner: user._id, phone: normalizedPhone, address: String(businessAddress || "").trim().slice(0, 240) });
+        user.organizationId = organization._id;
+        await user.save();
+      } catch (organizationError) {
+        await User.deleteOne({ _id: user._id }).catch(() => {});
+        throw organizationError;
+      }
+    }
     res.status(201).json({ success: true, token: signToken(user), user: user.toSafeJSON() });
   } catch (err) {
     if (err?.code === 11000) return res.status(409).json({ success: false, message: "An account already exists for this email" });
@@ -36,9 +50,12 @@ authRouter.post("/register", async (req, res) => {
 
 authRouter.post("/login", async (req, res) => {
   try {
-    const { email, password } = req.body || {};
+    const { email, password, portal = "user" } = req.body || {};
+    if (!["user", "owner"].includes(portal)) return res.status(400).json({ success: false, message: "Choose a valid sign-in type" });
     const user = await User.findOne({ email: String(email || "").trim().toLowerCase() });
     if (!user || typeof password !== "string" || password.length > 128 || !(await bcrypt.compare(password, user.passwordHash))) return res.status(401).json({ success: false, message: "Invalid email or password" });
+    if (portal === "owner" && user.role !== "owner") return res.status(403).json({ success: false, message: "This is the facility owner sign-in. Use driver sign-in for this account." });
+    if (portal === "user" && !["driver", "admin"].includes(user.role)) return res.status(403).json({ success: false, message: "This is a facility owner account. Use owner sign-in." });
     res.json({ success: true, token: signToken(user), user: user.toSafeJSON() });
   } catch (err) {
     console.error("Login failed", err);

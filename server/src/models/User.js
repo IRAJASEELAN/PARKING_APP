@@ -12,7 +12,8 @@ const userSchema = new mongoose.Schema(
   {
     name: { type: String, default: "" },
     email: { type: String, required: true, unique: true, lowercase: true },
-    role: { type: String, enum: ["driver", "admin"], default: "driver" },
+    role: { type: String, enum: ["driver", "owner", "admin"], default: "driver" },
+    organizationId: { type: mongoose.Schema.Types.ObjectId, ref: "Organization", default: null },
     passwordHash: { type: String, required: true },
     activeReservation: { type: mongoose.Schema.Types.ObjectId, ref: "Reservation", default: null },
     resetTokenHash: { type: String, select: false },
@@ -36,6 +37,7 @@ userSchema.methods.toSafeJSON = function toSafeJSON() {
     name: this.name,
     email: this.email,
     role: this.role,
+    organizationId: this.organizationId,
     vehicles: this.vehicles,
     savedPlaces: this.savedPlaces,
     permissions: this.permissions,

@@ -2,10 +2,14 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import api from "../api.js";
 import { amenityIcon, amenityLabel, CUR } from "../utils.js";
+import { useSearch } from "../SearchContext.jsx";
+import { directionsPath } from "../utils/directions.js";
+import ParkingGarage3D from "../components/ParkingGarage3D.jsx";
 
 export default function FacilityPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { setDestination, setFilters } = useSearch();
   const [lot, setLot] = useState(null);
   const [slotMap, setSlotMap] = useState({ slots: [], mappedSpaces: 0, totalSpaces: 0, isDemoData: true });
   const [loading, setLoading] = useState(true);
@@ -32,6 +36,12 @@ export default function FacilityPage() {
 
   const available = lot.available ?? Math.max(0, lot.totalSpots - lot.occupied);
   const occupancyPct = Math.round((lot.occupied / lot.totalSpots) * 100);
+  function findBookableNearby() {
+    const [lng, lat] = lot.geo.coordinates;
+    setDestination({ label: lot.name, query: lot.name, lat, lng });
+    setFilters((previous) => ({ ...previous, availableNow: true, reservable: true }));
+    navigate("/app/results");
+  }
 
   return (
     <div className="shell" style={{ background: "#fff", overflowY: "auto" }}>
@@ -112,16 +122,7 @@ export default function FacilityPage() {
             <div><span className="facility-kicker">SPACE AVAILABILITY</span><h3>Parking layout</h3></div>
             <span className="facility-slots-count">{slotMap.mappedSpaces} mapped</span>
           </div>
-          {slotMap.slots.length ? <>
-            <div className="facility-slot-grid" aria-label="Parking space availability">
-              {slotMap.slots.map((slot) => <div className={`facility-slot ${slot.status.toLowerCase()}`} key={slot._id} title={`${slot.slotNumber} · ${slot.status}`}>
-                <span className="facility-slot-car">{slot.status === "AVAILABLE" ? "✓" : slot.status === "OCCUPIED" ? "●" : slot.status === "RESERVED" ? "R" : "—"}</span>
-                <span>{slot.slotNumber}</span>
-              </div>)}
-            </div>
-            <div className="facility-slot-legend"><span><i className="available" />Available</span><span><i className="occupied" />Occupied</span><span><i className="reserved" />Reserved</span></div>
-            <p className="facility-slot-note">{slotMap.isDemoData ? "Illustrative sample layout and occupancy. A specific bay is assigned by the facility on arrival." : "Facility-reported layout. A specific bay is assigned by the facility on arrival."}</p>
-          </> : <div className="facility-slots-empty">Individual spaces haven’t been mapped for this facility yet. You can still reserve from the facility’s available capacity.</div>}
+          {slotMap.slots.length ? <ParkingGarage3D slots={slotMap.slots} isDemoData={slotMap.isDemoData} /> : <div className="facility-slots-empty">Individual spaces haven’t been mapped for this facility yet. You can still reserve from the facility’s available capacity.</div>}
         </section>
         {/* Amenity icons */}
         <div style={{ marginTop: 24 }}>
@@ -182,13 +183,10 @@ export default function FacilityPage() {
       </div>
 
       {/* Sticky CTA */}
-      <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 390, padding: "16px 20px", background: "#fff", borderTop: "1px solid var(--border)", zIndex: 20 }}>
-        <button
-          className="btn btn-primary"
-          style={{ fontSize: 16, fontWeight: 700 }}
-          onClick={() => navigate(`/app/reserve/${lot._id}`)}
-        >
-          Reserve a space →
+      <div className="facility-sticky-actions">
+        <button className="btn btn-outline" onClick={() => { const [lng, lat] = lot.geo.coordinates; navigate(directionsPath({ lat, lng, name: lot.name, address: lot.address })); }}>Directions</button>
+        <button className="btn btn-primary" onClick={() => lot.reservable && available > 0 ? navigate(`/app/reserve/${lot._id}`) : findBookableNearby()}>
+          {lot.reservable && available > 0 ? "Reserve a space" : "Find bookable nearby"} →
         </button>
       </div>
     </div>

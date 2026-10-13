@@ -36,12 +36,13 @@ export function AuthProvider({ children }) {
       token,
       user,
       loading,
-      async login(email, password) {
-        const { data } = await api.post("/auth/login", { email, password });
+      async login(email, password, portal = "user") {
+        const { data } = await api.post("/auth/login", { email, password, portal });
         localStorage.setItem("pf_token", data.token);
         localStorage.setItem("pf_user", JSON.stringify(data.user));
         setToken(data.token);
         setUser(data.user);
+        return data.user;
       },
       async register(payload) {
         const { data } = await api.post("/auth/register", payload);

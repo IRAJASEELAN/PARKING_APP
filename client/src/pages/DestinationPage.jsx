@@ -54,7 +54,7 @@ export default function DestinationPage() {
   }
 
   return <div className="shell" style={{ background: "#fff" }}>
-    <div className="status-bar dark"><span>ParkFlow</span><span>Chennai</span></div>
+    <div className="status-bar dark"><span>ParkFlow</span><span>Search worldwide</span></div>
     <form onSubmit={searchPlaces} style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <button type="button" className="back-btn" onClick={() => navigate("/app")} aria-label="Back">←</button>
@@ -75,10 +75,10 @@ export default function DestinationPage() {
         <p style={{ fontSize: 11, color: "var(--text-muted)" }}>Place data © OpenStreetMap contributors</p>
       </>}
       {searchError && <p role="status" style={{ marginTop: 16, color: "var(--text-muted)" }}>{searchError}</p>}
-      <div className="section-title" style={{ marginTop: 24 }}>{q ? "ParkFlow facilities matching your search" : "Suggested Chennai facilities"}</div>
+      <div className="section-title" style={{ marginTop: 24 }}>{q ? "ParkFlow facilities matching your search" : "ParkFlow facilities"}</div>
       {matches.map((lot) => <button key={lot._id} onClick={() => chooseLot(lot)} style={{ display: "block", width: "100%", textAlign: "left", padding: "14px 0", border: 0, borderBottom: "1px solid var(--border)", background: "none", cursor: "pointer", fontFamily: "inherit" }}>
         <div style={{ fontWeight: 700, color: "var(--text)" }}>{lot.name}</div>
-        <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 3 }}>{lot.address || lot.neighborhood} · sample facility</div>
+        <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 3 }}>{lot.address || lot.neighborhood} · ParkFlow listing</div>
       </button>)}
       {q && !matches.length && <p style={{ color: "var(--text-muted)" }}>No ParkFlow facility matches yet. Use Search above to find this place on the map.</p>}
       <p style={{ marginTop: 18, fontSize: 12, color: "var(--text-muted)" }}>Selected: {destination?.label}</p>

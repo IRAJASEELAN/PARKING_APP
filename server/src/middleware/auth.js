@@ -26,3 +26,8 @@ export function requireAdmin(req, res, next) {
   if (!req.user || req.user.role !== "admin") return res.status(403).json({ success: false, message: "Administrator access required" });
   next();
 }
+
+export function requireOwner(req, res, next) {
+  if (!req.user || req.user.role !== "owner" || !req.user.organizationId) return res.status(403).json({ success: false, message: "Facility owner access required" });
+  next();
+}

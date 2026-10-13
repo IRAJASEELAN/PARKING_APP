@@ -87,6 +87,13 @@ export default function WelcomePage() {
           >
             Already have an account? Sign in
           </button>
+          <button
+            className="btn btn-ghost"
+            style={{ color: "rgba(255,255,255,.72)", fontSize: 13 }}
+            onClick={() => navigate("/owner/signin")}
+          >
+            Parking facility owner? Sign in here
+          </button>
         </div>
       </div>
     </div>

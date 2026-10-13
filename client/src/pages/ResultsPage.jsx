@@ -5,6 +5,7 @@ import L from "leaflet";
 import api from "../api.js";
 import { useSearch } from "../SearchContext.jsx";
 import { CUR } from "../utils.js";
+import { directionsPath } from "../utils/directions.js";
 
 const CENTER = [13.0537, 80.2601]; // Anna Salai, Chennai
 
@@ -29,17 +30,46 @@ function ResultMarkers({ lots, selected, onSelect }) {
   return null;
 }
 
+function DiscoveryMarkers({ facilities, selected, onSelect }) {
+  const map = useMap();
+  useEffect(() => {
+    const markers = facilities.map((place) => {
+      const html = `<div class="result-osm-pin${selected?.id === place.id ? " selected" : ""}">P</div>`;
+      const icon = L.divIcon({ html, className: "", iconAnchor: [15, 15], iconSize: [30, 30] });
+      const marker = L.marker([place.lat, place.lng], { icon, title: `${place.name}, live availability not provided` }).addTo(map);
+      marker.on("click", () => onSelect(place));
+      return marker;
+    });
+    return () => markers.forEach((marker) => marker.remove());
+  }, [facilities, selected, map, onSelect]);
+  return null;
+}
+
 const SORT_OPTIONS = ["Best match", "Lowest price", "Nearest", "Top rated"];
 
 export default function ResultsPage() {
   const navigate = useNavigate();
-  const { filters, destination } = useSearch();
+  const { filters, destination, setDestination, setFilters } = useSearch();
   const [lots, setLots] = useState([]);
+  const [mapFacilities, setMapFacilities] = useState([]);
+  const [discoveryError, setDiscoveryError] = useState("");
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [sort, setSort] = useState("Best match");
   const [updatedAt, setUpdatedAt] = useState(null);
   const [refreshError, setRefreshError] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setMapFacilities([]);
+    setDiscoveryError("");
+    api.get("/parking/nearby", { params: { lat: destination?.lat ?? CENTER[0], lng: destination?.lng ?? CENTER[1], radiusKm: 5 }, signal: controller.signal })
+      .then(({ data }) => setMapFacilities(data.facilities || []))
+      .catch((error) => {
+        if (error.code !== "ERR_CANCELED") setDiscoveryError("Map listings are temporarily unavailable. ParkFlow facilities are still shown.");
+      });
+    return () => controller.abort();
+  }, [destination?.lat, destination?.lng]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -83,6 +113,11 @@ export default function ResultsPage() {
     return arr; // Best match = API default
   }
 
+  function bookNearby(place) {
+    setDestination({ label: place.name, query: place.name, lat: place.lat, lng: place.lng });
+    setFilters((previous) => ({ ...previous, availableNow: true, reservable: true }));
+  }
+
   return (
     <div className="shell" style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
       {/* Map (top half) */}
@@ -93,6 +128,7 @@ export default function ResultsPage() {
         <MapContainer center={[destination?.lat ?? CENTER[0], destination?.lng ?? CENTER[1]]} zoom={14} style={{ height: "100%", width: "100%" }} zoomControl={false}>
           <TileLayer url="https://tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
           <ResultMarkers lots={lots} selected={selected} onSelect={setSelected} />
+          <DiscoveryMarkers facilities={mapFacilities} selected={selected} onSelect={setSelected} />
         </MapContainer>
         {/* Back button */}
         <button
@@ -111,10 +147,10 @@ export default function ResultsPage() {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
               <h3 style={{ fontSize: 18 }}>
-                {loading ? "Finding…" : `${lots.length} safe options`}
+                {loading ? "Finding…" : `${lots.length + mapFacilities.length} parking options`}
               </h3>
               <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>{destination?.label || "T. Nagar, Chennai"}</div>
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>{refreshError || (updatedAt ? `Availability refreshed ${updatedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · refreshes every 30 sec` : "Checking current availability…")}</div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>{refreshError || (updatedAt ? `ParkFlow availability refreshed ${updatedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · refreshes every 30 sec` : "Checking ParkFlow availability…")}</div>
             </div>
             <button
               onClick={() => navigate("/app/filters")}
@@ -133,16 +169,28 @@ export default function ResultsPage() {
           </div>
         </div>
 
+        {filters.reservable && !loading && lots.length === 0 && <div className="booking-unavailable-note" role="status">
+          <strong>No ParkFlow booking partners are available in this search yet.</strong>
+          <span>Nearby map listings can show directions, but they don’t share verified spaces or accept ParkFlow reservations.</span>
+        </div>}
+
         {/* Lot list */}
         <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
           {loading ? (
             <div style={{ textAlign: "center", padding: 40 }}>
               <div className="spin" style={{ width: 28, height: 28, border: "3px solid var(--border)", borderTopColor: "var(--mint)", borderRadius: "50%", margin: "0 auto" }} />
             </div>
-          ) : lots.length === 0 ? (
-            <p style={{ textAlign: "center", color: "var(--text-muted)", marginTop: 40 }}>No lots match your filters.</p>
+          ) : lots.length === 0 && mapFacilities.length === 0 ? (
+            <p style={{ textAlign: "center", color: "var(--text-muted)", marginTop: 40 }}>{discoveryError || "No parking options found nearby. Try increasing the search radius or changing filters."}</p>
           ) : (
-            lots.map((lot, i) => <LotResult key={lot._id} lot={lot} index={i} onClick={() => navigate(`/app/lots/${lot._id}`)} selected={selected?._id === lot._id} onHover={() => setSelected(lot)} bestMatch={sort === "Best match" && i === 0} />)
+            <>
+              {lots.map((lot, i) => <LotResult key={lot._id} lot={lot} index={i} onClick={() => navigate(`/app/lots/${lot._id}`)} onBook={() => navigate(`/app/reserve/${lot._id}`)} selected={selected?._id === lot._id} onHover={() => setSelected(lot)} bestMatch={sort === "Best match" && i === 0} />)}
+              {mapFacilities.length > 0 && <>
+                <div className="discovery-section-heading"><span>MORE NEARBY PLACES</span><small>OpenStreetMap · availability is not shared live</small></div>
+                {mapFacilities.map((place) => <DiscoveryResult key={place.id} place={place} selected={selected?.id === place.id} bookableSearch={filters.reservable} onSelect={() => setSelected(place)} onBook={() => bookNearby(place)} onDirections={() => navigate(directionsPath({ lat: place.lat, lng: place.lng, name: place.name, address: place.address }))} />)}
+                <p className="discovery-attribution">{discoveryError || "Map data © OpenStreetMap contributors. Prices and live space counts are not provided by this map data."}</p>
+              </>}
+            </>
           )}
         </div>
       </div>
@@ -150,7 +198,19 @@ export default function ResultsPage() {
   );
 }
 
-function LotResult({ lot, index, onClick, selected, onHover, bestMatch }) {
+function DiscoveryResult({ place, selected, bookableSearch, onSelect, onBook, onDirections }) {
+  return <article className={`discovery-result${selected ? " selected" : ""}`} onMouseEnter={onSelect}>
+    <div className="discovery-result-icon">P</div>
+    <div className="discovery-result-copy">
+      <strong>{place.name}</strong>
+      <span>{place.address || place.parkingType} · {place.distanceKm.toFixed(1)} km away</span>
+      <small>{place.fee}{place.openingHours ? ` · ${place.openingHours}` : ""}</small>
+    </div>
+    <div className="discovery-result-actions">{bookableSearch ? <button type="button" disabled>Not bookable</button> : <button type="button" onClick={(event) => { event.stopPropagation(); onBook(); }}>Book nearby</button>}<button type="button" onClick={(event) => { event.stopPropagation(); onDirections(); }}>Directions</button></div>
+  </article>;
+}
+
+function LotResult({ lot, index, onClick, onBook, selected, onHover, bestMatch }) {
   const available = lot.available ?? Math.max(0, lot.totalSpots - lot.occupied);
   return (
     <div
@@ -167,19 +227,21 @@ function LotResult({ lot, index, onClick, selected, onHover, bestMatch }) {
       <div className="lot-icon" style={{ fontSize: 20 }}>🅿️</div>
       <div style={{ flex: 1 }}>
         <div style={{ fontWeight: 700, fontSize: 15 }}>{lot.name}</div>
+        <div style={{ fontSize: 10, color: "#839088", marginTop: 3 }}>{lot.isDemoData ? "ParkFlow sample listing · estimated availability" : lot.availabilityFresh ? `${lot.occupancySource || "Operator"} update` : "Availability update is out of date"}</div>
         {bestMatch && <div style={{ fontSize: 12, color: "var(--mint-dark, #1B7A4F)", fontWeight: 700, marginTop: 3 }}>{lot.score ?? 0}/100 match · {(lot.reasons || []).slice(0, 2).join(" · ")}</div>}
         <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>{lot.address}</div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
           <span style={{ fontSize: 12, color: "#FFB800", fontWeight: 600 }}>★ {lot.driverRating}</span>
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>· {lot.distanceKm != null ? `${lot.distanceKm.toFixed(1)} km away` : `${lot.walkMin} min walk`}</span>
           <span style={{ fontSize: 11, fontWeight: 600, color: available > 0 ? "#1B7A4F" : "#CF1322", background: available > 0 ? "var(--mint-light)" : "#FFF1F0", borderRadius: 6, padding: "2px 7px" }}>
-            {available > 0 ? `${available} left` : "Full"}
+            {lot.isDemoData ? `${available} est.` : available > 0 ? `${available} left` : "Full"}
           </span>
         </div>
       </div>
-      <div style={{ textAlign: "right", flexShrink: 0 }}>
+      <div className="result-lot-actions">
         <div style={{ fontSize: 18, fontWeight: 800, color: "var(--bg-dark)" }}>{CUR}{lot.rates?.hourly ?? lot.rates?.firstHour}</div>
         <div style={{ fontSize: 11, color: "var(--text-muted)" }}>/hr</div>
+        {lot.reservable && available > 0 ? <button type="button" className="result-book-button" onClick={(event) => { event.stopPropagation(); onBook(); }}>Book</button> : <span className="result-walkin-label">{lot.reservable ? "Full" : "Walk-in"}</span>}
       </div>
     </div>
   );

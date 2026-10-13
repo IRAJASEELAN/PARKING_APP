@@ -6,9 +6,15 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "cap": "node scripts/capacitor.mjs",
+    "android:add": "npm run cap -- add android",
+    "android:sync": "npm run build && npm run cap -- sync android",
+    "android:apk": "npm run build && npm run cap -- sync android && cd android && gradlew.bat assembleDebug"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
     "axios": "^1.7.9",
     "leaflet": "^1.9.4",
     "qrcode": "^1.5.4",
@@ -18,6 +24,7 @@
     "react-router-dom": "^6.28.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.3",
     "@vitejs/plugin-react": "^4.3.4",
     "vite": "^6.0.7"
   }

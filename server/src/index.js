@@ -7,23 +7,33 @@ import { authRouter } from "./routes/auth.js";
 import { usersRouter } from "./routes/users.js";
 import { lotsRouter } from "./routes/lots.js";
 import { geocodeRouter } from "./routes/geocode.js";
+import { parkingRouter } from "./routes/parking.js";
+import { directionsRouter } from "./routes/directions.js";
 import { reservationsRouter } from "./routes/reservations.js";
 import { adminRouter } from "./routes/admin.js";
 import { analyticsRouter } from "./routes/analytics.js";
 import { occupancyRouter } from "./routes/occupancy.js";
+import { ownerRouter } from "./routes/owner.js";
 
 const app = express();
 const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
 app.disable("x-powered-by");
 app.use((req,res,next)=>{ res.set("X-Content-Type-Options","nosniff"); res.set("X-Frame-Options","DENY"); res.set("Referrer-Policy","strict-origin-when-cross-origin"); next(); });
-app.use(cors({ origin: clientUrl, credentials: true }));
+const allowedOrigins = new Set([clientUrl, "https://localhost", "http://localhost", "capacitor://localhost"]);
+app.use(cors({ origin(origin, callback) {
+  if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+  return callback(new Error("Origin is not allowed by ParkFlow API"));
+}, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, name: "ParkFlow" }));
 app.use("/api/auth", authRouter);
 app.use("/api/users", usersRouter);
+app.use("/api/owner", ownerRouter);
 app.use("/api/lots", lotsRouter);
 app.use("/api/geocode", geocodeRouter);
+app.use("/api/parking", parkingRouter);
+app.use("/api/directions", directionsRouter);
 app.use("/api/occupancy", occupancyRouter);
 app.use("/api/reservations", reservationsRouter);
 app.use("/api/admin", adminRouter);

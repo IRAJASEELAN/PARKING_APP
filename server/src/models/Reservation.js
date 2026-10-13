@@ -6,7 +6,9 @@ const reservationSchema = new mongoose.Schema({
   vehicle: { plate: String, make: String },
   status: { type: String, enum: ["held", "confirmed", "paid", "active", "completed", "cancelled", "expired"], default: "held" },
   amount: Number, durationHours: Number, expiresAt: Date,
-  bookingReference: { type: String, unique: true, sparse: true }, qrPayload: String,
+  bookingReference: { type: String, unique: true, sparse: true },
+  checkedInAt: Date, checkedInBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+  assignedSlot: { type: mongoose.Schema.Types.ObjectId, ref: "ParkingSlot", default: null },
   priceBreakdown: { parkingFee: Number, serviceFee: Number, total: Number, currency: { type: String, default: "INR" } },
   payment: { method: { type: String, enum: ["pay_at_facility"] }, status: { type: String, enum: ["due", "paid_at_facility"], default: "due" }, settledAt: Date, settledBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" } }, startedAt: Date, endedAt: Date,
 }, { timestamps: true });

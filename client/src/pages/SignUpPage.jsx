@@ -1,12 +1,14 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../AuthContext.jsx";
 import Toast from "../components/Toast.jsx";
 
 export default function SignUpPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { register } = useAuth();
-  const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "" });
+  const initialAccountType = searchParams.get("type") === "owner" ? "owner" : "driver";
+  const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "", accountType: initialAccountType, organizationName: "", phone: "", businessAddress: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -23,8 +25,8 @@ export default function SignUpPage() {
     }
     setLoading(true);
     try {
-      await register({ name: form.name, email: form.email, password: form.password });
-      navigate("/app");
+      await register({ name: form.name, email: form.email, password: form.password, accountType: form.accountType, organizationName: form.organizationName, phone: form.phone, businessAddress: form.businessAddress });
+      navigate(form.accountType === "owner" ? "/app/owner" : "/app");
     } catch (err) {
       setError(err?.response?.data?.message || "Could not create account");
     } finally {
@@ -59,6 +61,30 @@ export default function SignUpPage() {
               {error}
             </div>
           )}
+
+          <div className="field">
+            <label htmlFor="account-type">Account type</label>
+            <select id="account-type" className="input" value={form.accountType} onChange={(e) => setForm({ ...form, accountType: e.target.value })}>
+              <option value="driver">I’m looking for parking</option>
+              <option value="owner">I manage a parking facility</option>
+            </select>
+          </div>
+
+          {form.accountType === "owner" && <>
+            <div className="field">
+              <label htmlFor="organization-name">Business or facility group</label>
+              <input id="organization-name" className="input" type="text" placeholder="Your parking business" value={form.organizationName} onChange={(e) => setForm({ ...form, organizationName: e.target.value })} required maxLength={120} autoComplete="organization" />
+            </div>
+            <div className="field">
+              <label htmlFor="owner-phone">Contact phone</label>
+              <input id="owner-phone" className="input" type="tel" placeholder="+91 98765 43210" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} required maxLength={24} autoComplete="tel" />
+            </div>
+            <div className="field">
+              <label htmlFor="business-address">Business address</label>
+              <input id="business-address" className="input" type="text" placeholder="Street, area, city" value={form.businessAddress} onChange={(e) => setForm({ ...form, businessAddress: e.target.value })} maxLength={240} autoComplete="street-address" />
+            </div>
+            <p style={{ margin: 0, color: "var(--text-muted)", fontSize: 13, lineHeight: 1.45 }}>Your owner account and submitted facilities are reviewed before they appear as bookable to drivers.</p>
+          </>}
 
           <div className="field">
             <label>Full name</label>

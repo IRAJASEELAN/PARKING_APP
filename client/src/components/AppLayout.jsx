@@ -41,6 +41,10 @@ const NAV = [
   { path: "/app/trips",   exact: false, label: "Trips",   Icon: IconTrips },
   { path: "/app/profile", exact: false, label: "Profile", Icon: IconProfile },
 ];
+const OWNER_NAV = [
+  { path: "/app/owner", exact: false, label: "Owner dashboard", Icon: IconTrips },
+  { path: "/app/profile", exact: false, label: "Profile", Icon: IconProfile },
+];
 
 export default function AppLayout({ children }) {
   const { pathname } = useLocation();
@@ -53,6 +57,7 @@ export default function AppLayout({ children }) {
 
   const initials = (user?.name || "U")
     .split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+  const navItems = user?.role === "owner" ? OWNER_NAV : user?.role === "admin" ? [...NAV, { path: "/app/admin", exact: false, label: "Admin", Icon: IconTrips }] : NAV;
 
   return (
     <div className="app-layout">
@@ -66,7 +71,7 @@ export default function AppLayout({ children }) {
 
         {/* Navigation */}
         <nav className="sidebar-nav">
-          {(user?.role === "admin" ? [...NAV, { path: "/app/admin", exact: false, label: "Admin", Icon: IconTrips }] : NAV).map(({ path, exact, label, Icon }) => {
+          {navItems.map(({ path, exact, label, Icon }) => {
             const active = isActive(path, exact);
             return (
               <button
@@ -116,4 +121,3 @@ export default function AppLayout({ children }) {
     </div>
   );
 }
-

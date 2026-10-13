@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import api from "../api.js";
 import QRCode from "qrcode";
 import { fmtDate, fmtTime, CUR } from "../utils.js";
+import { directionsPath } from "../utils/directions.js";
 
 export default function ConfirmedPage() {
   const { id } = useParams();
@@ -101,15 +102,15 @@ export default function ConfirmedPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 20 }}>
           <button
             className="btn btn-primary"
-            onClick={() => navigate(`/app/navigate/${reservation._id}`)}
+            onClick={() => { const [lng, lat] = lot.geo.coordinates; navigate(directionsPath({ lat, lng, name: lot.name, address: lot.address })); }}
           >
-            🗺 Get directions
+            🗺 Directions in ParkFlow
           </button>
           <button
             className="btn btn-outline"
             onClick={() => navigate(`/app/session/${reservation._id}`)}
           >
-            Start parking session
+            View booking QR
           </button>
           <button
             className="btn btn-ghost"

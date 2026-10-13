@@ -49,11 +49,11 @@ export default function ReservationScanner() {
     };
   }, [active]);
 
-  async function verify(event) {
+  async function checkIn(event) {
     event.preventDefault();
     setError(""); setResult(null);
     try {
-      const { data } = await api.post("/reservations/verify", { payload });
+      const { data } = await api.post("/reservations/check-in", { payload });
       setResult(data);
     } catch (requestError) {
       setError(requestError?.response?.data?.message || "Could not verify this reservation.");
@@ -71,19 +71,19 @@ export default function ReservationScanner() {
     finally { setSettling(false); }
   }
   return <section className="card" style={{ padding: 16, marginBottom: 12 }}>
-    <h3 style={{ marginTop: 0 }}>Verify reservation QR</h3>
-    <p style={{ fontSize: 13, color: "var(--text-muted)" }}>The server checks the booking reference and current reservation status.</p>
+    <h3 style={{ marginTop: 0 }}>Scan driver booking to check in</h3>
+    <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Only reservations for a facility you manage can check in. Each booking QR works once.</p>
     <video ref={videoRef} muted playsInline style={{ width: "100%", maxHeight: 240, borderRadius: 12, background: "#17221e", display: active ? "block" : "none" }} />
     <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
       <button className="btn btn-outline" type="button" onClick={() => { setError(""); setActive((value) => !value); }}>{active ? "Stop camera" : "Scan with camera"}</button>
     </div>
-    <form onSubmit={verify} style={{ display: "grid", gap: 8 }}>
+    <form onSubmit={checkIn} style={{ display: "grid", gap: 8 }}>
       <textarea className="input" rows={3} value={payload} onChange={(event) => setPayload(event.target.value)} placeholder="Paste the QR contents" aria-label="Reservation QR contents" required />
-      <button className="btn btn-primary" type="submit">Verify booking</button>
+      <button className="btn btn-primary" type="submit">Check in driver</button>
     </form>
     {error && <p role="alert" style={{ color: "#a61d24", fontSize: 13 }}>{error}</p>}
     {result && <div role="status" style={{ marginTop: 12, padding: 12, borderRadius: 10, background: result.valid ? "var(--mint-light)" : "#fff1f0" }}>
-      <b>{result.valid ? "Valid reservation" : "Reservation not valid"}</b>
+      <b>{result.checkedIn ? "Driver checked in" : result.alreadyCheckedIn ? "Already checked in" : result.valid ? "Reservation verified" : "Reservation not valid"}</b>
       {result.reservation && <><div style={{ fontSize: 13, marginTop: 6 }}>{result.reservation.lot} · {result.reservation.vehicle || "Vehicle not listed"} · {result.reservation.status} · {result.reservation.bookingReference}</div><div style={{ fontSize: 13, marginTop: 6 }}>₹{Number(result.reservation.amount || 0).toFixed(2)} · {result.reservation.paymentStatus === "paid_at_facility" ? "Paid at facility" : "Payment due at facility"}</div>{result.reservation.paymentStatus !== "paid_at_facility" && <button className="btn btn-outline" type="button" style={{ marginTop: 10 }} onClick={recordFacilityPayment} disabled={settling}>{settling ? "Recording…" : "Record payment collected at facility"}</button>}</>}
     </div>}
   </section>;

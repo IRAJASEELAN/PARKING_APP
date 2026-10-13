@@ -31,7 +31,7 @@ lotsRouter.get("/", async (req, res) => {
       const list = String(amenities).split(",").filter(Boolean);
       if (list.length) filter.amenities = { $all: list };
     }
-    let lots = await Lot.find(filter).lean();
+    let lots = await Lot.find({ $and: [filter, { $or: [{ isDemoData: true }, { approvalStatus: "approved" }] }] }).lean();
     lots = lots.map((lot) => {
       const available = Math.max(0, (Number(lot.totalSpots) || 0) - (Number(lot.occupied) || 0));
       const updatedAt = lot.occupancyUpdatedAt ? new Date(lot.occupancyUpdatedAt) : null;
@@ -86,6 +86,7 @@ lotsRouter.get("/:id", async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ success: false, message: "Invalid facility id" });
     const lot = await Lot.findById(req.params.id);
     if (!lot) return res.status(404).json({ success: false, message: "Parking facility not found" });
+    if (!lot.isDemoData && lot.approvalStatus !== "approved") return res.status(404).json({ success: false, message: "Parking facility not found" });
     const json = lot.toJSON();
     json.available = Math.max(0, lot.totalSpots - lot.occupied);
     json.availabilityFresh = Boolean(lot.occupancyUpdatedAt && Date.now() - new Date(lot.occupancyUpdatedAt).getTime() <= 5 * 60 * 1000);

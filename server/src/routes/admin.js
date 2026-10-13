@@ -5,6 +5,7 @@ import { Lot } from "../models/Lot.js";
 import { ParkingSlot } from "../models/ParkingSlot.js";
 import { Reservation } from "../models/Reservation.js";
 import { User } from "../models/User.js";
+import { Organization } from "../models/Organization.js";
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth, requireAdmin);
@@ -43,14 +44,21 @@ adminRouter.post("/lots", async (req, res) => {
 adminRouter.patch("/lots/:id", async (req, res) => {
   try {
     if (!validId(req.params.id)) return fail(res, 400, "Invalid facility id");
-    const allowed = ["name", "address", "neighborhood", "rates", "amenities", "hours", "safetyScore", "driverRating", "totalSpots", "occupied", "reservable", "vehicleTypes"];
+    const allowed = ["name", "address", "neighborhood", "rates", "amenities", "hours", "safetyScore", "driverRating", "totalSpots", "occupied", "reservable", "vehicleTypes", "approvalStatus", "approvalNote"];
     const update = Object.fromEntries(Object.entries(req.body || {}).filter(([key]) => allowed.includes(key)));
     if (!Object.keys(update).length) return fail(res, 400, "No editable facility fields were provided");
+    if (update.approvalStatus !== undefined && !["pending", "approved", "rejected"].includes(update.approvalStatus)) return fail(res, 400, "Facility review status is invalid");
     if (update.totalSpots !== undefined && (!Number.isInteger(Number(update.totalSpots)) || Number(update.totalSpots) < 1)) return fail(res, 400, "Capacity must be a positive whole number");
     if (update.safetyScore !== undefined && (!Number.isFinite(Number(update.safetyScore)) || update.safetyScore < 0 || update.safetyScore > 5)) return fail(res, 400, "Sample safety score must be between 0 and 5");
     const lot = await Lot.findById(req.params.id);
     if (!lot) return fail(res, 404, "Parking facility not found");
+    if (update.approvalStatus === "approved" && lot.ownerOrganization) {
+      const organization = await Organization.findById(lot.ownerOrganization).select("status").lean();
+      if (organization?.status !== "approved") return fail(res, 409, "Approve this owner's application before approving its facilities");
+    }
     Object.assign(lot, update);
+    if (update.approvalStatus && update.approvalStatus !== "approved") lot.reservable = false;
+    if (update.approvalStatus === "approved" && update.reservable === undefined) lot.reservable = true;
     if (update.occupied !== undefined) { lot.occupancySource = "manual"; lot.occupancyUpdatedAt = new Date(); }
     if (lot.totalSpots < lot.occupied) return fail(res, 409, "Capacity cannot be lower than current occupancy");
     await lot.save();
@@ -108,6 +116,23 @@ adminRouter.get("/reservations", async (_req, res) => {
 adminRouter.get("/users", async (_req, res) => {
   try { const users = await User.find().select("name email role createdAt").sort({ createdAt: -1 }).limit(200); res.json({ success: true, users }); }
   catch (err) { console.error("Admin users query failed", err); fail(res, 500, "Unable to load users"); }
+});
+
+adminRouter.get("/organizations", async (_req, res) => {
+  try {
+    const organizations = await Organization.find().populate("primaryOwner", "name email").sort({ createdAt: -1 }).limit(300).lean();
+    res.json({ success: true, organizations });
+  } catch (err) { console.error("Organization review list failed", err); fail(res, 500, "Unable to load owner applications"); }
+});
+adminRouter.patch("/organizations/:id/review", async (req, res) => {
+  try {
+    if (!validId(req.params.id)) return fail(res, 400, "Invalid owner application id");
+    const status = req.body?.status;
+    if (!["approved", "rejected", "pending"].includes(status)) return fail(res, 400, "Choose approved, rejected, or pending");
+    const organization = await Organization.findByIdAndUpdate(req.params.id, { $set: { status, reviewNote: String(req.body?.reviewNote || "").trim().slice(0, 500), reviewedBy: req.user._id, reviewedAt: new Date() } }, { new: true, runValidators: true }).populate("primaryOwner", "name email");
+    if (!organization) return fail(res, 404, "Owner application not found");
+    res.json({ success: true, organization });
+  } catch (err) { console.error("Organization review update failed", err); fail(res, 500, "Unable to update owner application"); }
 });
 
 

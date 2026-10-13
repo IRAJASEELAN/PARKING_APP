@@ -17,7 +17,8 @@ function authorized(req) {
 occupancyRouter.post("/report", async (req, res) => {
   if (!process.env.OCCUPANCY_WEBHOOK_SECRET) return res.status(503).json({ success: false, message: "Occupancy reporting is not configured" });
   if (!authorized(req)) return res.status(401).json({ success: false, message: "Occupancy source authentication failed" });
-  const { lotId, occupied, observedAt } = req.body || {};
+  const { lotId, occupied, observedAt, source = "sensor" } = req.body || {};
+  if (!["sensor", "camera", "manual"].includes(source)) return res.status(400).json({ success: false, message: "Occupancy source must be sensor, camera, or manual" });
   if (!mongoose.Types.ObjectId.isValid(lotId) || !observedAt) return res.status(400).json({ success: false, message: "Facility, whole-number occupancy, and observation time are required" });
   const timestamp = new Date(observedAt);
   if (Number.isNaN(timestamp.getTime())) return res.status(400).json({ success: false, message: "Occupancy observation time is invalid" });
@@ -26,7 +27,7 @@ occupancyRouter.post("/report", async (req, res) => {
     if (!lot) return res.status(404).json({ success: false, message: "Parking facility not found" });
     const invalidReport = validateOccupancyReport({ occupied, totalSpots: lot.totalSpots, observedAt: timestamp, lastUpdated: lot.occupancyUpdatedAt });
     if (invalidReport) return res.status(invalidReport.status).json({ success: false, message: invalidReport.message });
-    const updated = await Lot.findOneAndUpdate({ _id: lotId, totalSpots: { $gte: occupied }, $or: [{ occupancyUpdatedAt: null }, { occupancyUpdatedAt: { $lt: timestamp } }] }, { $set: { occupied, occupancySource: "sensor", occupancyUpdatedAt: timestamp } }, { new: true, runValidators: true });
+    const updated = await Lot.findOneAndUpdate({ _id: lotId, totalSpots: { $gte: occupied }, $or: [{ occupancyUpdatedAt: null }, { occupancyUpdatedAt: { $lt: timestamp } }] }, { $set: { occupied, occupancySource: source, occupancyUpdatedAt: timestamp } }, { new: true, runValidators: true });
     if (!updated) return res.status(409).json({ success: false, message: "Occupancy changed before this update could be applied" });
     res.json({ success: true, lotId: String(updated._id), available: Math.max(0, updated.totalSpots - updated.occupied), source: updated.occupancySource, updatedAt: updated.occupancyUpdatedAt });
   } catch (error) {

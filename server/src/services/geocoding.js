@@ -43,7 +43,7 @@ export async function searchPlaces(rawQuery) {
   const search = (async () => {
     const endpoint = process.env.GEOCODER_SEARCH_URL || "https://nominatim.openstreetmap.org/search";
     const url = new URL(endpoint);
-    url.search = new URLSearchParams({ q: query, format: "jsonv2", addressdetails: "1", limit: "6", countrycodes: "in", "accept-language": "en" }).toString();
+    url.search = new URLSearchParams({ q: query, format: "jsonv2", addressdetails: "1", limit: "6", "accept-language": "en" }).toString();
     const response = await lookup(url);
     if (!Array.isArray(response)) throw new Error("Place search provider returned an invalid response");
     const results = response.map((place) => ({

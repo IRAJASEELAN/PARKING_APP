@@ -1,0 +1,8 @@
+{
+  "appId": "com.parkflow.app",
+  "appName": "ParkFlow",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "http"
+  }
+}

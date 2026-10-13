@@ -11,6 +11,9 @@ const reservationClaimSchema = new mongoose.Schema({
 const lotSchema = new mongoose.Schema(
   {
     name: { type: String, required: true }, shortName: String, address: String, neighborhood: String,
+    ownerOrganization: { type: mongoose.Schema.Types.ObjectId, ref: "Organization", default: null, index: true },
+    approvalStatus: { type: String, enum: ["pending", "approved", "rejected"], default: "approved", index: true },
+    approvalNote: { type: String, maxlength: 500, default: "" },
     geo: { type: { type: String, enum: ["Point"], default: "Point" }, coordinates: { type: [Number], required: true } },
     rates: { firstHour: Number, additional: Number, dailyMax: Number, hourly: Number },
     amenities: [String], hours: { type: String, default: "Open 24/7" }, safetyScore: Number, driverRating: Number,

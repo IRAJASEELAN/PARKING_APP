@@ -111,7 +111,7 @@ const lots = [
     driveMin: 5,
     walkMi: 0.3,
     pinColor: "orange",
-    reservable: false,
+    reservable: true,
     vehicleTypes: ["car", "suv", "motorcycle"],
   },
   {
@@ -165,7 +165,7 @@ const lots = [
     driveMin: 6,
     walkMi: 0.35,
     pinColor: "orange",
-    reservable: false,
+    reservable: true,
     vehicleTypes: ["car", "motorcycle"],
   },
   {
@@ -219,7 +219,7 @@ const lots = [
     driveMin: 10,
     walkMi: 0.1,
     pinColor: "orange",
-    reservable: false,
+    reservable: true,
     vehicleTypes: ["car", "suv", "motorcycle"],
   },
 ];
