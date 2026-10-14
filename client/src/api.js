@@ -1,11 +1,29 @@
 import axios from "axios";
+import { Capacitor } from "@capacitor/core";
+
+// Default host for native Android APK when running on mobile device on the same local Wi-Fi
+const DEFAULT_NATIVE_API_URL = "http://10.174.95.34:5000";
 
 function apiBaseUrl() {
   const saved = localStorage.getItem("pf_api_url");
-  const configured = saved || import.meta.env.VITE_API_URL || "";
-  if (!configured) return "/api";
-  const clean = configured.trim().replace(/\/+$/, "");
-  return clean.endsWith("/api") ? clean : `${clean}/api`;
+  if (saved) {
+    const clean = saved.trim().replace(/\/+$/, "");
+    return clean.endsWith("/api") ? clean : `${clean}/api`;
+  }
+
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl) {
+    const clean = envUrl.trim().replace(/\/+$/, "");
+    return clean.endsWith("/api") ? clean : `${clean}/api`;
+  }
+
+  // When running natively inside Android APK (Capacitor)
+  if (Capacitor.isNativePlatform()) {
+    return `${DEFAULT_NATIVE_API_URL}/api`;
+  }
+
+  // Web browser development/production
+  return "/api";
 }
 
 const api = axios.create({ baseURL: apiBaseUrl() });

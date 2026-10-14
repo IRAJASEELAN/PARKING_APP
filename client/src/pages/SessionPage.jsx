@@ -82,7 +82,15 @@ export default function SessionPage() {
         <div style={{ background: "rgba(61,220,151,.15)", border: "1px solid rgba(61,220,151,.4)", borderRadius: 20, padding: "6px 16px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--mint)", animation: "pulse 1.5s infinite" }} />
-            <span style={{ color: "var(--mint)", fontSize: 13, fontWeight: 700, letterSpacing: .5 }}>{reservation.status === "active" ? "ACTIVE PARKING SESSION" : ["confirmed", "paid"].includes(reservation.status) ? "CONFIRMED · PAY AT FACILITY" : reservation.status.toUpperCase()}</span>
+          <span style={{ color: "var(--mint)", fontSize: 13, fontWeight: 700, letterSpacing: .5 }}>
+            {reservation.status === "active"
+              ? "ACTIVE PARKING SESSION"
+              : reservation.status === "paid"
+              ? "PAID ONLINE · SHOW QR AT ENTRANCE"
+              : reservation.status === "confirmed"
+              ? "CONFIRMED · PAYMENT PENDING"
+              : reservation.status.toUpperCase()}
+          </span>
           </div>
         </div>
       </div>

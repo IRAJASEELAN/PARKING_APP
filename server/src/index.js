@@ -19,11 +19,11 @@ const app = express();
 const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
 app.disable("x-powered-by");
 app.use((req,res,next)=>{ res.set("X-Content-Type-Options","nosniff"); res.set("X-Frame-Options","DENY"); res.set("Referrer-Policy","strict-origin-when-cross-origin"); next(); });
-const allowedOrigins = new Set([clientUrl, "https://localhost", "http://localhost", "capacitor://localhost"]);
-app.use(cors({ origin(origin, callback) {
-  if (!origin || allowedOrigins.has(origin)) return callback(null, true);
-  return callback(new Error("Origin is not allowed by ParkFlow API"));
-}, credentials: true }));
+app.use(cors({ origin: true, credentials: true }));
+app.use((req, res, next) => {
+  console.log("[REQ]", req.method, req.originalUrl || req.url, "from", req.ip);
+  next();
+});
 app.use(express.json({ limit: "1mb" }));
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, name: "ParkFlow" }));

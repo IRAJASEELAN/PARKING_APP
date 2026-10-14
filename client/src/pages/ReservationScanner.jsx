@@ -78,13 +78,38 @@ export default function ReservationScanner() {
       <button className="btn btn-outline" type="button" onClick={() => { setError(""); setActive((value) => !value); }}>{active ? "Stop camera" : "Scan with camera"}</button>
     </div>
     <form onSubmit={checkIn} style={{ display: "grid", gap: 8 }}>
-      <textarea className="input" rows={3} value={payload} onChange={(event) => setPayload(event.target.value)} placeholder="Paste the QR contents" aria-label="Reservation QR contents" required />
-      <button className="btn btn-primary" type="submit">Check in driver</button>
+      <textarea className="input" rows={2} value={payload} onChange={(event) => setPayload(event.target.value)} placeholder="Paste QR data or type Booking Reference (e.g. 7A8B9C0D)" aria-label="Reservation QR contents" required />
+      <button className="btn btn-primary" type="submit">Verify & Check In Driver</button>
     </form>
     {error && <p role="alert" style={{ color: "#a61d24", fontSize: 13 }}>{error}</p>}
-    {result && <div role="status" style={{ marginTop: 12, padding: 12, borderRadius: 10, background: result.valid ? "var(--mint-light)" : "#fff1f0" }}>
-      <b>{result.checkedIn ? "Driver checked in" : result.alreadyCheckedIn ? "Already checked in" : result.valid ? "Reservation verified" : "Reservation not valid"}</b>
-      {result.reservation && <><div style={{ fontSize: 13, marginTop: 6 }}>{result.reservation.lot} · {result.reservation.vehicle || "Vehicle not listed"} · {result.reservation.status} · {result.reservation.bookingReference}</div><div style={{ fontSize: 13, marginTop: 6 }}>₹{Number(result.reservation.amount || 0).toFixed(2)} · {result.reservation.paymentStatus === "paid_at_facility" ? "Paid at facility" : "Payment due at facility"}</div>{result.reservation.paymentStatus !== "paid_at_facility" && <button className="btn btn-outline" type="button" style={{ marginTop: 10 }} onClick={recordFacilityPayment} disabled={settling}>{settling ? "Recording…" : "Record payment collected at facility"}</button>}</>}
+    {result && <div role="status" style={{ marginTop: 12, padding: 14, borderRadius: 12, background: result.valid ? "var(--mint-light)" : "#fff1f0", border: `1px solid ${result.valid ? "var(--mint-mid)" : "#ffb3ae"}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 20 }}>{result.checkedIn ? "✅" : result.alreadyCheckedIn ? "⚠️" : "ℹ️"}</span>
+        <b>{result.checkedIn ? "Driver Checked In Successfully!" : result.alreadyCheckedIn ? "Already Checked In" : result.valid ? "Reservation Verified" : "Reservation Not Valid"}</b>
+      </div>
+      {result.reservation && (
+        <div style={{ marginTop: 10, display: "grid", gap: 6, fontSize: 13 }}>
+          <div><strong>Facility:</strong> {result.reservation.lot}</div>
+          <div><strong>Vehicle:</strong> {result.reservation.vehicle || "Vehicle not listed"}</div>
+          <div><strong>Reference:</strong> <code style={{ fontWeight: 700, letterSpacing: 1 }}>{result.reservation.bookingReference}</code></div>
+          <div><strong>Status:</strong> <span style={{ textTransform: "uppercase", fontWeight: 700, color: "var(--bg-dark)" }}>{result.reservation.status}</span></div>
+          <div>
+            <strong>Payment:</strong>{" "}
+            {result.reservation.paymentStatus === "paid_online" ? (
+              <span style={{ color: "#16804A", fontWeight: 700 }}>₹{Number(result.reservation.amount || 0).toFixed(2)} · Paid Online ✓</span>
+            ) : result.reservation.paymentStatus === "paid_at_facility" ? (
+              <span style={{ color: "#16804A", fontWeight: 700 }}>₹{Number(result.reservation.amount || 0).toFixed(2)} · Paid at Facility</span>
+            ) : (
+              <span style={{ color: "#B42318", fontWeight: 700 }}>₹{Number(result.reservation.amount || 0).toFixed(2)} · Payment Due on Arrival</span>
+            )}
+          </div>
+          {result.reservation.paymentStatus !== "paid_at_facility" && result.reservation.paymentStatus !== "paid_online" && (
+            <button className="btn btn-outline" type="button" style={{ marginTop: 8 }} onClick={recordFacilityPayment} disabled={settling}>
+              {settling ? "Recording…" : "Record Payment Collected at Facility"}
+            </button>
+          )}
+        </div>
+      )}
     </div>}
   </section>;
 }

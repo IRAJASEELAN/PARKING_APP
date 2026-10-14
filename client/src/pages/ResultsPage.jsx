@@ -203,7 +203,7 @@ function DiscoveryResult({ place, selected, bookableSearch, onSelect, onBook, on
     <div className="discovery-result-icon">P</div>
     <div className="discovery-result-copy">
       <strong>{place.name}</strong>
-      <span>{place.address || place.parkingType} · {place.distanceKm.toFixed(1)} km away</span>
+      <span>{place.address || place.parkingType}{place.distanceKm != null ? ` · ${place.distanceKm.toFixed(1)} km away` : ""}</span>
       <small>{place.fee}{place.openingHours ? ` · ${place.openingHours}` : ""}</small>
     </div>
     <div className="discovery-result-actions">{bookableSearch ? <button type="button" disabled>Not bookable</button> : <button type="button" onClick={(event) => { event.stopPropagation(); onBook(); }}>Book nearby</button>}<button type="button" onClick={(event) => { event.stopPropagation(); onDirections(); }}>Directions</button></div>

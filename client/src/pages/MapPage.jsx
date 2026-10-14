@@ -73,7 +73,7 @@ function ParkingMarkers({ lots, selectedId, onSelect }) {
 
 export default function MapPage() {
   const navigate = useNavigate();
-  const { filters, setFilters, destination, userLocation, useCurrentLocation } = useSearch();
+  const { filters, setFilters, setDestination, destination, userLocation, useCurrentLocation } = useSearch();
   const [lots, setLots] = useState([]);
   const [mapListings, setMapListings] = useState([]);
   const [selected, setSelected] = useState(null);

@@ -20,6 +20,7 @@ const FacilityPage = lazy(() => import("./pages/FacilityPage.jsx"));
 const ReservePage = lazy(() => import("./pages/ReservePage.jsx"));
 const CheckoutPage = lazy(() => import("./pages/CheckoutPage.jsx"));
 const ConfirmedPage = lazy(() => import("./pages/ConfirmedPage.jsx"));
+const PaymentPage = lazy(() => import("./pages/PaymentPage.jsx"));
 const NavigatePage = lazy(() => import("./pages/NavigatePage.jsx"));
 const DirectionsPage = lazy(() => import("./pages/DirectionsPage.jsx"));
 const SessionPage = lazy(() => import("./pages/SessionPage.jsx"));
@@ -91,6 +92,7 @@ function App() {
               <Route path="/app/lots/:id"           element={<FacilityPage />} />
               <Route path="/app/reserve/:id"        element={<ReservePage />} />
               <Route path="/app/checkout"           element={<CheckoutPage />} />
+              <Route path="/app/payment/:id"         element={<PaymentPage />} />
               <Route path="/app/reservation/:id"    element={<ConfirmedPage />} />
               <Route path="/app/navigate/:id"       element={<NavigatePage />} />
               <Route path="/app/directions"        element={<DirectionsPage />} />

@@ -10,11 +10,15 @@ const reservationSchema = new mongoose.Schema({
   checkedInAt: Date, checkedInBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   assignedSlot: { type: mongoose.Schema.Types.ObjectId, ref: "ParkingSlot", default: null },
   priceBreakdown: { parkingFee: Number, serviceFee: Number, total: Number, currency: { type: String, default: "INR" } },
-  payment: { method: { type: String, enum: ["pay_at_facility"] }, status: { type: String, enum: ["due", "paid_at_facility"], default: "due" }, settledAt: Date, settledBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" } }, startedAt: Date, endedAt: Date,
+  payment: {
+    method: { type: String, enum: ["pay_at_facility", "online_mock"] },
+    status: { type: String, enum: ["due", "paid_at_facility", "paid_online"], default: "due" },
+    settledAt: Date,
+    settledBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    transactionId: { type: String, default: null },
+  },
+  startedAt: Date, endedAt: Date,
 }, { timestamps: true });
 reservationSchema.index({ lot: 1, start: 1, end: 1, status: 1 });
 reservationSchema.index({ user: 1, status: 1, start: 1 });
 export const Reservation = mongoose.model("Reservation", reservationSchema);
-
-
-

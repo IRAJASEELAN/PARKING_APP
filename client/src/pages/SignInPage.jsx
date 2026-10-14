@@ -1,8 +1,5 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { Capacitor } from "@capacitor/core";
-import { getApiServerUrl, setApiServerUrl } from "../api.js";
-import api from "../api.js";
 import { useAuth } from "../AuthContext.jsx";
 
 function ParkFlowLogo() {
@@ -27,26 +24,6 @@ export default function SignInPage({ portal = "user" }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showPw, setShowPw] = useState(false);
-  const [serverUrl, setServerUrl] = useState(getApiServerUrl());
-  const [serverStatus, setServerStatus] = useState("");
-  const [checkingServer, setCheckingServer] = useState(false);
-  const isNative = Capacitor.isNativePlatform();
-
-  async function saveServer() {
-    setServerStatus("");
-    try {
-      setApiServerUrl(serverUrl);
-      setCheckingServer(true);
-      await api.get("/health", { timeout: 8000 });
-      setServerStatus("Connected. You can sign in.");
-    } catch (err) {
-      setServerStatus(err?.message === "Network Error" || !err?.response
-        ? "Could not reach the server. Check the address, Wi-Fi, and that the ParkFlow server is running."
-        : "Server reached, but returned an unexpected response.");
-    } finally {
-      setCheckingServer(false);
-    }
-  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -56,7 +33,13 @@ export default function SignInPage({ portal = "user" }) {
       const user = await login(form.email, form.password, portal);
       navigate(user?.role === "owner" ? "/app/owner" : user?.role === "admin" ? "/app/admin" : "/app");
     } catch (err) {
-      setError(err?.response?.data?.message || "Invalid email or password");
+      if (err?.response?.data?.message) {
+        setError(err.response.data.message);
+      } else if (err?.message === "Network Error" || !err?.response) {
+        setError("Cannot connect to server. Please turn on Wi-Fi and connect to the same Wi-Fi as your computer.");
+      } else {
+        setError("Invalid email or password");
+      }
     } finally {
       setLoading(false);
     }
@@ -74,22 +57,6 @@ export default function SignInPage({ portal = "user" }) {
 
       <div style={{ padding: "8px 24px 40px", flex: 1, display: "flex", flexDirection: "column" }}>
         <ParkFlowLogo />
-
-        {isNative && (
-          <section style={{ marginTop: 18, padding: 14, border: "1px solid var(--border)", borderRadius: 14, background: "#F8FBF9" }}>
-            <strong style={{ display: "block", fontSize: 13, marginBottom: 6 }}>Connect to your ParkFlow server</strong>
-            <p style={{ fontSize: 12, lineHeight: 1.5, color: "var(--text-muted)", marginBottom: 10 }}>
-              Keep your phone and computer on the same Wi-Fi. Enter your computer’s local address and port 5000.
-            </p>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input className="input" type="url" inputMode="url" placeholder="http://192.168.1.10:5000" value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} aria-label="ParkFlow server address" />
-              <button className="btn btn-primary" type="button" onClick={saveServer} disabled={checkingServer} style={{ whiteSpace: "nowrap", paddingInline: 12 }}>
-                {checkingServer ? "Checking…" : "Connect"}
-              </button>
-            </div>
-            {serverStatus && <p role="status" style={{ fontSize: 12, color: serverStatus.startsWith("Connected") ? "#16804A" : "#B42318", marginTop: 8 }}>{serverStatus}</p>}
-          </section>
-        )}
 
         <div className="fade-up" style={{ marginTop: 28 }}>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "var(--mint-light)", color: "var(--bg-dark)", borderRadius: 999, padding: "6px 11px", fontSize: 12, fontWeight: 700, marginBottom: 12 }}>
@@ -167,7 +134,7 @@ export default function SignInPage({ portal = "user" }) {
             {isOwnerPortal ? "Register as an owner" : "Create account"}
           </Link>
         </div>
-</div>
+      </div>
     </div>
   );
 }

@@ -18,7 +18,14 @@ function qrSignature(reservationId, bookingReference) {
 }
 function addQrPayload(reservation) {
   const plain = reservation?.toObject ? reservation.toObject() : { ...reservation };
-  if (plain?._id && plain?.bookingReference) plain.qrPayload = JSON.stringify({ type: "PARKFLOW_RESERVATION", reservationId: String(plain._id), bookingReference: plain.bookingReference, signature: qrSignature(String(plain._id), plain.bookingReference) });
+  if (plain?._id && plain?.bookingReference) {
+    plain.qrPayload = JSON.stringify({
+      type: "PARKFLOW_RESERVATION",
+      reservationId: String(plain._id),
+      bookingReference: plain.bookingReference,
+      signature: qrSignature(String(plain._id), plain.bookingReference),
+    });
+  }
   return plain;
 }
 function readQrPayload(input) {
@@ -35,10 +42,23 @@ function canManageLot(user, lot) {
   return user.role === "admin" || (user.role === "owner" && lot.ownerOrganization && String(user.organizationId) === String(lot.ownerOrganization));
 }
 async function findReservationFromQr(input) {
-  const payload = readQrPayload(input);
-  if (!payload) return { payload: null, reservation: null };
-  const reservation = await Reservation.findOne({ _id: payload.reservationId, bookingReference: payload.bookingReference }).populate("lot");
-  return { payload, reservation };
+  let payload = readQrPayload(input);
+  if (payload) {
+    const reservation = await Reservation.findOne({ _id: payload.reservationId, bookingReference: payload.bookingReference }).populate("lot");
+    return { payload, reservation };
+  }
+  // Resilient fallback: support booking reference code (e.g. "A1B2C3D4")
+  if (typeof input === "string" && input.trim()) {
+    const cleaned = input.trim().toUpperCase();
+    const reservation = await Reservation.findOne({ bookingReference: cleaned }).populate("lot");
+    if (reservation) {
+      return {
+        payload: { type: "PARKFLOW_RESERVATION", reservationId: String(reservation._id), bookingReference: reservation.bookingReference },
+        reservation
+      };
+    }
+  }
+  return { payload: null, reservation: null };
 }
 async function expireUserHolds(userId) {
   const now = new Date();
@@ -55,6 +75,7 @@ function claimCapacityExpression(start, end, now) {
   ] } } } };
 }
 
+/* ── QR verify (no check-in) ── */
 reservationsRouter.post("/verify", requireAuth, async (req, res) => {
   try {
     const { payload, reservation } = await findReservationFromQr(req.body?.payload);
@@ -68,12 +89,9 @@ reservationsRouter.post("/verify", requireAuth, async (req, res) => {
   }
 });
 
+/* ── QR check-in (owner scans driver QR) ── */
 reservationsRouter.post("/check-in", requireAuth, async (req, res) => {
-  let lotId;
-  let userClaimed = false;
-  let lotClaimed = false;
-  let originalClaimStatus = "confirmed";
-  let reservationId;
+  let lotId, userClaimed = false, lotClaimed = false, originalClaimStatus = "confirmed", reservationId;
   try {
     const { payload, reservation } = await findReservationFromQr(req.body?.payload);
     if (!payload) return apiError(res, 400, "Invalid or outdated reservation QR");
@@ -87,11 +105,7 @@ reservationsRouter.post("/check-in", requireAuth, async (req, res) => {
     const user = await User.findOneAndUpdate({ _id: reservation.user, $or: [{ activeReservation: null }, { activeReservation: { $exists: false } }] }, { $set: { activeReservation: reservation._id } }, { new: true });
     if (!user) return apiError(res, 409, "This driver already has an active parking session");
     userClaimed = true;
-    const lotUpdate = await Lot.updateOne({
-      _id: lotId,
-      occupied: { $lt: reservation.lot.totalSpots },
-      reservationClaims: { $elemMatch: { reservationId, status: originalClaimStatus } },
-    }, { $inc: { occupied: 1 }, $set: { "reservationClaims.$.status": "active" } });
+    const lotUpdate = await Lot.updateOne({ _id: lotId, occupied: { $lt: reservation.lot.totalSpots }, reservationClaims: { $elemMatch: { reservationId, status: originalClaimStatus } } }, { $inc: { occupied: 1 }, $set: { "reservationClaims.$.status": "active" } });
     if (!lotUpdate.modifiedCount) return apiError(res, 409, "The reserved capacity is no longer available");
     lotClaimed = true;
     const checkedIn = await Reservation.findOneAndUpdate({ _id: reservationId, status: originalClaimStatus, checkedInAt: { $exists: false } }, { $set: { status: "active", startedAt: now, checkedInAt: now, checkedInBy: req.user._id } }, { new: true }).populate("lot");
@@ -102,7 +116,6 @@ reservationsRouter.post("/check-in", requireAuth, async (req, res) => {
     apiError(res, 500, "Unable to check in this reservation right now");
   } finally {
     if (lotClaimed && reservationId) {
-      // Successful check-ins are already active in both records; roll back only when the reservation update failed.
       const stillConfirmed = await Reservation.exists({ _id: reservationId, status: originalClaimStatus, checkedInAt: { $exists: false } }).catch(() => false);
       if (stillConfirmed) await Lot.updateOne({ _id: lotId, "reservationClaims.reservationId": reservationId, "reservationClaims.status": "active" }, { $inc: { occupied: -1 }, $set: { "reservationClaims.$.status": originalClaimStatus } }).catch(() => {});
     }
@@ -112,14 +125,18 @@ reservationsRouter.post("/check-in", requireAuth, async (req, res) => {
     }
   }
 });
+
+/* ── List user reservations ── */
 reservationsRouter.get("/", requireAuth, async (req, res) => {
   try {
     await expireUserHolds(req.user._id);
     const list = await Reservation.find({ user: req.user._id }).populate("lot").sort({ createdAt: -1 });
-    res.json(list);
+    // Add qrPayload to each reservation so TripsPage can show booking reference
+    res.json(list.map((r) => addQrPayload(r)));
   } catch (err) { console.error("Reservation list failed", err); apiError(res, 500, "Unable to load reservations right now"); }
 });
 
+/* ── Single reservation ── */
 reservationsRouter.get("/:id", requireAuth, async (req, res) => {
   try {
     if (!validId(req.params.id)) return apiError(res, 400, "Invalid reservation id");
@@ -130,9 +147,9 @@ reservationsRouter.get("/:id", requireAuth, async (req, res) => {
   } catch (err) { console.error("Reservation lookup failed", err); apiError(res, 500, "Unable to load this reservation right now"); }
 });
 
+/* ── Create reservation (hold) ── */
 reservationsRouter.post("/", requireAuth, async (req, res) => {
-  let reservationId;
-  let claimLotId;
+  let reservationId, claimLotId;
   try {
     const { lotId, start, durationHours, vehicle } = req.body || {};
     if (!validId(lotId)) return apiError(res, 400, "Invalid facility id");
@@ -145,7 +162,9 @@ reservationsRouter.post("/", requireAuth, async (req, res) => {
     const { hours, startDate, endDate } = window;
     const selectedVehicle = vehicle?.plate ? req.user.vehicles.find((item) => item.plate === vehicle.plate) : req.user.vehicles[0];
     if (!selectedVehicle) return apiError(res, 400, "Choose a vehicle saved to your account");
-    if (!lot.vehicleTypes?.includes(String(vehicle?.type || "car").toLowerCase())) return apiError(res, 400, "This facility does not support your vehicle type");
+    // Default to "car" if no type provided — matching existing vehicle model
+    const vehicleType = String(vehicle?.type || "car").toLowerCase();
+    if (!lot.vehicleTypes?.includes(vehicleType)) return apiError(res, 400, "This facility does not support your vehicle type");
     const duplicate = await Reservation.findOne({ user: req.user._id, lot: lot._id, status: { $in: ACTIVE_STATUSES }, start: { $lt: endDate }, end: { $gt: startDate }, $or: [{ status: { $in: ["confirmed", "paid", "active"] } }, { status: "held", expiresAt: { $gt: now } }] });
     if (duplicate) return apiError(res, 409, "You already have a reservation for this facility and time.");
     const priceBreakdown = calculateQuote(lot, hours);
@@ -167,6 +186,7 @@ reservationsRouter.post("/", requireAuth, async (req, res) => {
   }
 });
 
+/* ── Confirm reservation (held → confirmed) ── */
 reservationsRouter.post("/:id/confirm", requireAuth, async (req, res) => {
   try {
     if (!validId(req.params.id)) return apiError(res, 400, "Invalid reservation id");
@@ -175,40 +195,43 @@ reservationsRouter.post("/:id/confirm", requireAuth, async (req, res) => {
     if (!reservation) return apiError(res, 404, "Reservation not found");
     if (["confirmed", "paid"].includes(reservation.status)) return res.json(addQrPayload(reservation));
     if (reservation.status !== "held" || !reservation.expiresAt || reservation.expiresAt <= new Date()) return apiError(res, 409, "This reservation hold has expired.");
-    const confirmed = await Reservation.findOneAndUpdate({ _id: reservation._id, user: req.user._id, status: "held", expiresAt: { $gt: new Date() } }, { $set: { status: "confirmed", "payment.method": "pay_at_facility", "payment.status": "due" }, $unset: { expiresAt: 1 } }, { new: true }).populate("lot");
+    const confirmed = await Reservation.findOneAndUpdate({ _id: reservation._id, user: req.user._id, status: "held", expiresAt: { $gt: new Date() } }, { $set: { status: "confirmed", "payment.method": "online_mock", "payment.status": "due" }, $unset: { expiresAt: 1 } }, { new: true }).populate("lot");
     if (!confirmed) return apiError(res, 409, "This reservation hold has expired.");
     await Lot.updateOne({ _id: reservation.lot._id, "reservationClaims.reservationId": reservation._id }, { $set: { "reservationClaims.$.status": "confirmed", "reservationClaims.$.expiresAt": null } });
     res.json(addQrPayload(confirmed));
   } catch (err) { console.error("Reservation confirmation failed", err); apiError(res, 500, "Unable to confirm this reservation right now"); }
 });
-reservationsRouter.post("/:id/start", requireAuth, async (req, res) => {
-    if (req.user.role !== "admin") return apiError(res, 403, "Facility staff must scan the booking QR to check in this driver.");
+
+/* ── Mock online payment (confirmed → paid) ── */
+reservationsRouter.post("/:id/pay", requireAuth, async (req, res) => {
   try {
     if (!validId(req.params.id)) return apiError(res, 400, "Invalid reservation id");
-    const now = new Date();
-    const reservation = await Reservation.findOne({ _id: req.params.id, user: req.user._id });
+    const reservation = await Reservation.findOne({ _id: req.params.id, user: req.user._id }).populate("lot");
     if (!reservation) return apiError(res, 404, "Reservation not found");
-    if (!["confirmed", "paid"].includes(reservation.status)) return apiError(res, 409, "Only a confirmed reservation can start a parking session.");
-    if (now < new Date(reservation.start.getTime() - 30 * 60 * 1000) || now >= reservation.end) return apiError(res, 409, "This reservation is outside its start window.");
-    if (await Reservation.exists({ user: req.user._id, status: "active", _id: { $ne: reservation._id } })) return apiError(res, 409, "You already have an active parking session.");
-    const userClaim = await User.findOneAndUpdate({ _id: req.user._id, $or: [{ activeReservation: null }, { activeReservation: { $exists: false } }] }, { $set: { activeReservation: reservation._id } }, { new: true });
-    if (!userClaim) return apiError(res, 409, "You already have an active parking session.");
-    const lot = await Lot.findById(reservation.lot).select("totalSpots");
-    if (!lot) return apiError(res, 404, "Parking facility not found");
-    const lotUpdate = await Lot.updateOne({ _id: reservation.lot, occupied: { $lt: lot.totalSpots }, reservationClaims: { $elemMatch: { reservationId: reservation._id, status: { $in: ["confirmed", "paid"] } } } }, { $inc: { occupied: 1 }, $set: { "reservationClaims.$.status": "active" } });
-    if (!lotUpdate.modifiedCount) { await User.updateOne({ _id: req.user._id, activeReservation: reservation._id }, { $set: { activeReservation: null } }); return apiError(res, 409, "The reserved space is no longer available."); }
-    const started = await Reservation.findOneAndUpdate({ _id: reservation._id, status: { $in: ["confirmed", "paid"] } }, { $set: { status: "active", startedAt: now } }, { new: true }).populate("lot");
-    if (!started) {
-      await Lot.updateOne({ _id: reservation.lot, "reservationClaims.reservationId": reservation._id }, { $inc: { occupied: -1 }, $set: { "reservationClaims.$.status": reservation.status } });
-      await User.updateOne({ _id: req.user._id, activeReservation: reservation._id }, { $set: { activeReservation: null } });
-      return apiError(res, 409, "This reservation has already changed state.");
-    }
-    res.json(started);
-  } catch (err) { console.error("Session start failed", err); apiError(res, 500, "Unable to start this parking session right now"); }
+    if (reservation.status === "paid") return res.json(addQrPayload(reservation)); // idempotent
+    if (reservation.status !== "confirmed") return apiError(res, 409, "Only a confirmed reservation can be paid.");
+    // Simulate transaction ID for mock payment
+    const transactionId = `TXN${Date.now()}${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+    const paid = await Reservation.findOneAndUpdate(
+      { _id: req.params.id, user: req.user._id, status: "confirmed" },
+      { $set: {
+        status: "paid",
+        "payment.method": "online_mock",
+        "payment.status": "paid_online",
+        "payment.settledAt": new Date(),
+        "payment.transactionId": transactionId,
+      }},
+      { new: true }
+    ).populate("lot");
+    if (!paid) return apiError(res, 409, "Payment could not be processed for this reservation.");
+    res.json(addQrPayload(paid));
+  } catch (err) {
+    console.error("Mock payment failed", err);
+    apiError(res, 500, "Unable to process payment right now");
+  }
 });
 
-reservationsRouter.post("/:id/end", requireAuth, async (_req, res) => apiError(res, 403, "Ask the facility attendant to check out this parking session."));
-
+/* ── Cancel reservation ── */
 reservationsRouter.post("/:id/cancel", requireAuth, async (req, res) => {
   try {
     if (!validId(req.params.id)) return apiError(res, 400, "Invalid reservation id");
@@ -221,16 +244,24 @@ reservationsRouter.post("/:id/cancel", requireAuth, async (req, res) => {
     res.json(cancelled);
   } catch (err) { console.error("Reservation cancellation failed", err); apiError(res, 500, "Unable to cancel this reservation right now"); }
 });
+
+/* ── Record on-site payment (owner records cash/POS payment) ── */
 reservationsRouter.post("/:id/settle", requireAuth, async (req, res) => {
   try {
     if (!validId(req.params.id)) return apiError(res, 400, "Invalid reservation id");
     const existing = await Reservation.findById(req.params.id).populate("lot", "ownerOrganization");
     if (!existing || !canManageLot(req.user, existing.lot)) return apiError(res, 404, "Reservation not found for a facility you manage");
-    const settled = await Reservation.findOneAndUpdate({ _id: req.params.id, status: { $in: ["confirmed", "active", "completed"] }, "payment.status": { $ne: "paid_at_facility" } }, { $set: { "payment.method": "pay_at_facility", "payment.status": "paid_at_facility", "payment.settledAt": new Date(), "payment.settledBy": req.user._id } }, { new: true });
+    const settled = await Reservation.findOneAndUpdate(
+      { _id: req.params.id, status: { $in: ["confirmed", "paid", "active", "completed"] }, "payment.status": { $ne: "paid_at_facility" } },
+      { $set: { "payment.method": "pay_at_facility", "payment.status": "paid_at_facility", "payment.settledAt": new Date(), "payment.settledBy": req.user._id } },
+      { new: true }
+    );
     if (!settled) return apiError(res, 409, "This reservation is not eligible for settlement or was already marked paid.");
     res.json({ success: true, reservation: settled });
   } catch (err) { console.error("On-site settlement failed", err); apiError(res, 500, "Unable to record the on-site payment"); }
 });
+
+/* ── Extend session ── */
 reservationsRouter.post("/:id/extend", requireAuth, async (req, res) => {
   try {
     if (!validId(req.params.id)) return apiError(res, 400, "Invalid reservation id");
@@ -262,7 +293,7 @@ reservationsRouter.post("/:id/extend", requireAuth, async (req, res) => {
     reservation.amount = reservation.priceBreakdown.total;
     try {
       const saved = await reservation.save();
-      res.json(saved);
+      res.json(addQrPayload(saved));
     } catch (err) {
       await Lot.updateOne({ _id: reservation.lot._id, "reservationClaims.reservationId": reservation._id }, { $set: { "reservationClaims.$.end": previousEnd } }).catch(() => {});
       throw err;
@@ -270,16 +301,6 @@ reservationsRouter.post("/:id/extend", requireAuth, async (req, res) => {
   } catch (err) { console.error("Reservation extension failed", err); apiError(res, 500, "Unable to extend this session right now"); }
 });
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* Disabled direct-start — facility staff must scan QR */
+reservationsRouter.post("/:id/start", requireAuth, async (_req, res) => apiError(res, 403, "Facility staff must scan the booking QR to check in this driver."));
+reservationsRouter.post("/:id/end",   requireAuth, async (_req, res) => apiError(res, 403, "Ask the facility attendant to check out this parking session."));

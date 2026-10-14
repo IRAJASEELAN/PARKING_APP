@@ -51,6 +51,7 @@ authRouter.post("/register", async (req, res) => {
 authRouter.post("/login", async (req, res) => {
   try {
     const { email, password, portal = "user" } = req.body || {};
+    console.log("[AUTH-LOGIN]", "Email:", email, "Portal:", portal, "PasswordLen:", password ? password.length : 0);
     if (!["user", "owner"].includes(portal)) return res.status(400).json({ success: false, message: "Choose a valid sign-in type" });
     const user = await User.findOne({ email: String(email || "").trim().toLowerCase() });
     if (!user || typeof password !== "string" || password.length > 128 || !(await bcrypt.compare(password, user.passwordHash))) return res.status(401).json({ success: false, message: "Invalid email or password" });
